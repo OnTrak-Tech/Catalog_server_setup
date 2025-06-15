@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Product Catalog</title>
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        .products {
+            flex: 2;
+        }
+        .sidebar {
+            flex: 1;
+            padding: 15px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+        }
+        .product {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            background-color: white;
+        }
+        .product h3 {
+            margin-top: 0;
+            color: #2a6496;
+        }
+        .price {
+            font-weight: bold;
+            color: #2a6496;
+            font-size: 1.2em;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #2a6496;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #1d4568;
+        }
+        .message {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+        .hidden {
+            display: none;
+        }
+        .logout {
+            background-color: #d9534f;
+        }
+        .logout:hover {
+            background-color: #c9302c;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Secure Product Catalog</h1>
+        <div id="auth-status">
+            <button id="login-button" onclick="showLoginForm()">Admin Login</button>
+            <button id="logout-button" class="logout hidden" onclick="logout()">Logout</button>
+        </div>
+    </header>
+
+    <div id="login-form" class="hidden sidebar">
+        <h2>Admin Login</h2>
+        <input type="text" id="username" placeholder="Username">
+        <input type="password" id="password" placeholder="Password">
+        <button onclick="login()">Login</button>
+        <div id="login-message"></div>
+    </div>
+
+    <div class="container">
+        <div class="products" id="products">
+            <h2>Products</h2>
+            <div id="products-list">
+                <!-- Products will be loaded here -->
+                <p>Loading products...</p>
+            </div>
+        </div>
+
+        <div id="admin-panel" class="sidebar hidden">
+            <h2>Add New Product</h2>
+            <input type="text" id="product-name" placeholder="Product Name" required>
+            <textarea id="product-description" placeholder="Product Description" rows="4"></textarea>
+            <input type="number" id="product-price" placeholder="Price" step="0.01" required>
+            <button onclick="addProduct()">Add Product</button>
+            <div id="add-message"></div>
+        </div>
+    </div>
+
+    <script>
+        // Check for token on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadProducts();
+            checkAuthStatus();
+        });
+
+        // Check if user is authenticated
+        function checkAuthStatus() {
+            const token = localStorage.getItem('jwt_token');
+            if (token) {
+                document.getElementById('login-button').classList.add('hidden');
+                document.getElementById('logout-button').classList.remove('hidden');
+                document.getElementById('admin-panel').classList.remove('hidden');
+            } else {
+                document.getElementById('login-button').classList.remove('hidden');
+                document.getElementById('logout-button').classList.add('hidden');
+                document.getElementById('admin-panel').classList.add('hidden');
+            }
+        }
+
+        // Show login form
+        function showLoginForm() {
+            document.getElementById('login-form').classList.toggle('hidden');
+        }
+
+        // Login function
+        function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            if (!username || !password) {
+                showMessage('login-message', 'Username and password are required', 'error');
+                return;
+            }
+            
+            fetch('/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ username, password })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Login failed');
+                }
+                return response.json();
+            })
+            .then(data => {
+                localStorage.setItem('jwt_token', data.access_token);
+                showMessage('login-message', 'Login successful', 'success');
+                document.getElementById('login-form').classList.add('hidden');
+                checkAuthStatus();
+                loadProducts(); // Reload products with admin privileges
+            })
+            .catch(error => {
+                showMessage('login-message', 'Invalid credentials', 'error');
+                console.error('Error:', error);
+            });
+        }
+
+        // Logout function
+        function logout() {
+            localStorage.removeItem('jwt_token');
+            checkAuthStatus();
+            showMessage('login-message', '', '');
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+        }
+
+        // Add product function
+        function addProduct() {
+            const token = localStorage.getItem('jwt_token');
+            if (!token) {
+                showMessage('add-message', 'You must be logged in to add products', 'error');
+                return;
+            }
+            
+            const name = document.getElementById('product-name').value;
+            const description = document.getElementById('product-description').value;
+            const price = parseFloat(document.getElementById('product-price').value);
+            
+            if (!name || !price) {
+                showMessage('add-message', 'Name and price are required', 'error');
+                return;
+            }
+            
+            fetch('/admin/products', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ name, description, price })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        localStorage.removeItem('jwt_token');
+                        checkAuthStatus();
+                        throw new Error('Authentication expired. Please login again.');
+                    }
+                    throw new Error('Failed to add product');
+                }
+                return response.json();
+            })
+            .then(data => {
+                showMessage('add-message', 'Product added successfully', 'success');
+                document.getElementById('product-name').value = '';
+                document.getElementById('product-description').value = '';
+                document.getElementById('product-price').value = '';
+                loadProducts(); // Reload products to show the new one
+            })
+            .catch(error => {
+                showMessage('add-message', error.message, 'error');
+                console.error('Error:', error);
+            });
+        }
+        
+        // Fetch products from API
+        function loadProducts() {
+            const token = localStorage.getItem('jwt_token');
+            const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+            
+            fetch('/products', {
+                headers: headers
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to fetch products');
+                }
+                return response.json();
+            })
+            .then(products => {
+                const productsDiv = document.getElementById('products-list');
+                
+                if (products.length === 0) {
+                    productsDiv.innerHTML = '<p>No products available</p>';
+                    return;
+                }
+                
+                productsDiv.innerHTML = '';
+                products.forEach(product => {
+                    productsDiv.innerHTML += `
+                        <div class="product">
+                            <h3>${product.name}</h3>
+                            <p>${product.description || 'No description available'}</p>
+                            <p class="price">$${product.price.toFixed(2)}</p>
+                        </div>
+                    `;
+                });
+            })
+            .catch(error => {
+                document.getElementById('products-list').innerHTML = 
+                    '<p>Error loading products. Please try again later.</p>';
+                console.error('Error fetching products:', error);
+            });
+        }
+        
+        // Helper function to show messages
+        function showMessage(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = message ? 
+                `<div class="message ${type}">${message}</div>` : '';
+        }
+    </script>
+</body>
+</html>
